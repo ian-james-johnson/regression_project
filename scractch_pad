@@ -1,0 +1,501 @@
+
+
+# Function to acquire and prepare Zillow data for exploration and modeling
+def wrangle_zillow():
+    '''
+    This function obtains zillow data from local csv or database server,
+    then prepares it for use.
+    The nulls are dropped and the columns are renamed.
+    '''
+
+    #Use acquire.py to obtain zillow data
+    df = acquire.get_zillow_data()
+
+    # Drop all rows with any Null values, and assign to df
+    df = df.dropna()
+
+    # Remove the outliers
+    df = remove_outliers(df, 2.0, ['calculatedfinishedsquarefeet', 
+    'taxvaluedollarcnt', 'taxamount','bedroomcnt', 'bathroomcnt'] )
+
+    # Rename the columns with more easily understood names
+    df = df.rename(columns = { 'bedroomcnt':'bedrooms', 
+                              'bathroomcnt':'bathrooms', 
+                              'calculatedfinishedsquarefeet':'sq_footage',
+                              'taxvaluedollarcnt':'tax_value', 
+                              'yearbuilt':'yr_built'
+        })   
+
+    # Get distributions of the numeric data
+    get_hist(df)
+
+    # Return the dataframe for use
+    return df
+
+
+
+
+
+def remove_outliers(df, k, col_list):
+    ''' Remove outliers from a list of columns in a dataframe 
+        and return that dataframe
+    '''
+
+    # The value for k is a constant that sets the threshold. 
+    # Usually, you’ll see k start at 1.5, or 3 or less, depending on how many outliers you want to keep. 
+    # The higher the k, the more outliers you keep. Recommend not going beneath 1.5, but this is worth using, 
+    # especially with data w/ extreme high/low values
+
+    for col in col_list:
+        q1, q3 = df[col].quantile([.25, .75])  # get quartiles
+        iqr = q3 - q1   # calculate interquartile range
+        
+        upper_bound = q3 + k * iqr   # get upper bound
+        lower_bound = q1 - k * iqr   # get lower bound
+
+        # return the dataframe without the outliers
+        df = df[(df[col] > lower_bound) & (df[col] < upper_bound)]
+        
+    return df
+
+
+
+
+def minMax(x):
+    '''
+    To call this function use:   df.apply(minMax)  
+    (Outside will have to call as:  df.apply(wrangle.minMax))
+    '''
+    return pd.Series(index=['min','max'],data=[x.min(),x.max()])
+
+
+
+def split_data(df):
+    '''
+    Take in a DataFrame and return train, validate, and test DataFrames.
+    '''
+
+    # Splits df into train_validate and test using train_test_split() 
+    train_validate, test = train_test_split(df, test_size=.2, random_state=123)
+    
+    # Splits train_validate into train and validate using train_test_split() 
+    train, validate = train_test_split(train_validate, 
+                                       test_size=.3, 
+                                       random_state=123)
+    return train, validate, test
+
+
+
+def add_scaled_columns(train, validate, test, scaler, columns_to_scale):
+    '''
+    FUNCTION to get a dataframe with the original columns and return the train, validate, test 
+    with addition of scaled columns
+    '''
+
+    # New column names
+    new_column_names = [c + '_scaled' for c in columns_to_scale]
+    
+    # Fit the scaler on the train
+    scaler.fit(train[columns_to_scale])
+    
+    # Transform train, validate, and test with the scaler 
+    train = pd.concat([
+        train,
+        pd.DataFrame(scaler.transform(train[columns_to_scale]), columns=new_column_names, index=train.index),
+    ], axis=1)
+    
+    validate = pd.concat([
+        validate,
+        pd.DataFrame(scaler.transform(validate[columns_to_scale]), columns=new_column_names, index=validate.index),
+    ], axis=1)
+    
+    test = pd.concat([
+        test,
+        pd.DataFrame(scaler.transform(test[columns_to_scale]), columns=new_column_names, index=test.index),
+    ], axis=1)
+    
+    return train, validate, test
+
+
+
+
+
+################### Plotting Functions #####################################
+#Plots a normalized value count as a percent using catplotS
+def category_percentages_by_another_category_col(df, category_a, category_b):
+    """
+    Produces a .catplot with a normalized value count
+    """
+    (df.groupby(category_b)[category_a].value_counts(normalize=True)
+    .rename('percent')
+    .reset_index()
+    .pipe((sns.catplot, 'data'), x=category_a, y='percent', col=category_b, kind='bar', ))
+
+
+# FUNCTION to plot a scatterplot passing in two variables
+# -------------------------------------------------------
+def plot_scatter(a, b):
+
+    ax1 = df.plot.scatter(x=a,y=b,c='Navy')        
+
+    return ax1
+
+# FUNCTION to plot histograms of continuous variables
+# 
+def get_hist(df):
+    ''' Gets histograms of acquired continuous variables'''
+    
+    plt.figure(figsize=(16, 3))
+
+    # List of columns
+    cols = [col for col in df.columns if col not in ['fips', 'year_built']]
+
+    for i, col in enumerate(cols):
+
+        # i starts at 0, but plot nos should start at 1
+        plot_number = i + 1 
+
+        # Create subplot.
+        plt.subplot(1, len(cols), plot_number)
+
+        # Title with column name.
+        plt.title(col)
+
+        # Display histogram for column.
+        df[col].hist(bins=5)
+
+        # Hide gridlines.
+        plt.grid(False)
+
+        # turn off scientific notation
+        plt.ticklabel_format(useOffset=False)
+
+        plt.tight_layout()
+
+    plt.show()    
+
+#FUNCTION to plot boxplots of continuous variables
+def get_box(df):
+    ''' Gets boxplots of acquired continuous variables'''
+    
+    # List of columns
+    cols = ['bedrooms', 'bathrooms', 'area', 'tax_value', 'taxamount']
+
+    plt.figure(figsize=(16, 3))
+
+    for i, col in enumerate(cols):
+
+        # i starts at 0, but plot should start at 1
+        plot_number = i + 1 
+
+        # Create subplot.
+        plt.subplot(1, len(cols), plot_number)
+
+        # Title with column name.
+        plt.title(col)
+
+        # Display boxplot for column.
+        sns.boxplot(data=df[[col]])
+
+        # Hide gridlines.
+        plt.grid(False)
+
+        # sets proper spacing between plots
+        plt.tight_layout()
+
+    plt.show()
+
+
+#FUNCTION that takes in a train, validate, test and returns a Standard scaler with the train_scaled, validate_scaled, and test_scaled
+def Standard_Scaler(X_train, X_validate, X_test):
+    """
+    Takes in X_train, X_validate and X_test dfs with numeric values only
+    Returns scaler, X_train_scaled, X_validate_scaled, X_test_scaled dfs
+    """
+
+    scaler = sklearn.preprocessing.StandardScaler().fit(X_train)
+    X_train_scaled = pd.DataFrame(scaler.transform(X_train), index = X_train.index, columns = X_train.columns)
+    X_validate_scaled = pd.DataFrame(scaler.transform(X_validate), index = X_validate.index, columns = X_validate.columns)
+    X_test_scaled = pd.DataFrame(scaler.transform(X_test), index = X_test.index, columns = X_test.columns)
+    
+    return scaler, X_train_scaled, X_validate_scaled, X_test_scaled
+
+#FUNCTION that takes in a train, validate, test and returns a Min Max scaler with the train_scaled, validate_scaled, and test_scaled
+def Min_Max_Scaler(X_train, X_validate, X_test):
+    """
+    Takes in X_train, X_validate and X_test dfs with numeric values only
+    Returns scaler, X_train_scaled, X_validate_scaled, X_test_scaled dfs 
+    """
+    scaler = sklearn.preprocessing.MinMaxScaler().fit(X_train)
+    X_train_scaled = pd.DataFrame(scaler.transform(X_train), index = X_train.index, columns = X_train.columns)
+    X_validate_scaled = pd.DataFrame(scaler.transform(X_validate), index = X_validate.index, columns = X_validate.columns)
+    X_test_scaled = pd.DataFrame(scaler.transform(X_test), index = X_test.index, columns = X_test.columns)
+    
+    return scaler, X_train_scaled, X_validate_scaled, X_test_scaled
+
+
+
+
+
+
+
+
+    def train_validate_test_split(df, target, seed=123):
+    '''
+    This function takes in a dataframe, the name of the target variable
+    (for stratification purposes), and an integer for a setting a seed
+    and splits the data into train, validate and test. 
+    Test is 20% of the original dataset, validate is .30*.80= 24% of the 
+    original dataset, and train is .70*.80= 56% of the original dataset. 
+    The function returns, in this order, train, validate and test dataframes. 
+    '''
+    train_validate, test = train_test_split(df, test_size=0.2, 
+                                            random_state=seed, 
+                                            stratify=df[target])
+    train, validate = train_test_split(train_validate, test_size=0.3, 
+                                       random_state=seed,
+                                       stratify=train_validate[target])
+    return train, validate, test
+
+
+def explore_univariate(train, cat_vars, quant_vars):
+    for var in cat_vars:
+        explore_univariate_categorical(train, var)
+        print('_________________________________________________________________')
+    for col in quant_vars:
+        p, descriptive_stats = explore_univariate_quant(train, col)
+        plt.show(p)
+        print(descriptive_stats)
+
+def explore_bivariate(train, target, cat_vars, quant_vars):
+    for cat in cat_vars:
+        explore_bivariate_categorical(train, target, cat)
+    for quant in quant_vars:
+        explore_bivariate_quant(train, target, quant)
+
+def explore_multivariate(train, target, cat_vars, quant_vars):
+    '''
+    '''
+    plot_swarm_grid_with_color(train, target, cat_vars, quant_vars)
+    plt.show()
+    violin = plot_violin_grid_with_color(train, target, cat_vars, quant_vars)
+    plt.show()
+    pair = sns.pairplot(data=train, vars=quant_vars, hue=target)
+    plt.show()
+    plot_all_continuous_vars(train, target, quant_vars)
+    plt.show()    
+
+
+### Univariate
+
+def explore_univariate_categorical(train, cat_var):
+    '''
+    takes in a dataframe and a categorical variable and returns
+    a frequency table and barplot of the frequencies. 
+    '''
+    frequency_table = freq_table(train, cat_var)
+    plt.figure(figsize=(2,2))
+    sns.barplot(x=cat_var, y='Count', data=frequency_table, color='lightseagreen')
+    plt.title(cat_var)
+    plt.show()
+    print(frequency_table)
+
+def explore_univariate_quant(train, quant_var):
+    '''
+    takes in a dataframe and a quantitative variable and returns
+    descriptive stats table, histogram, and boxplot of the distributions. 
+    '''
+    descriptive_stats = train[quant_var].describe()
+    plt.figure(figsize=(8,2))
+
+    p = plt.subplot(1, 2, 1)
+    p = plt.hist(train[quant_var], color='lightseagreen')
+    p = plt.title(quant_var)
+
+    # second plot: box plot
+    p = plt.subplot(1, 2, 2)
+    p = plt.boxplot(train[quant_var])
+    p = plt.title(quant_var)
+    return p, descriptive_stats
+
+def freq_table(train, cat_var):
+    '''
+    for a given categorical variable, compute the frequency count and percent split
+    and return a dataframe of those values along with the different classes. 
+    '''
+    class_labels = list(train[cat_var].unique())
+
+    frequency_table = (
+        pd.DataFrame({cat_var: class_labels,
+                      'Count': train[cat_var].value_counts(normalize=False), 
+                      'Percent': round(train[cat_var].value_counts(normalize=True)*100,2)}
+                    )
+    )
+    return frequency_table
+
+
+#### Bivariate
+
+def explore_bivariate_categorical(train, target, cat_var):
+    '''
+    takes in categorical variable and binary target variable, 
+    returns a crosstab of frequencies
+    runs a chi-square test for the proportions
+    and creates a barplot, adding a horizontal line of the overall rate of the target. 
+    '''
+    print(cat_var, "\n_____________________\n")
+    ct = pd.crosstab(train[cat_var], train[target], margins=True)
+    chi2_summary, observed, expected = run_chi2(train, cat_var, target)
+    p = plot_cat_by_target(train, target, cat_var)
+
+    print(chi2_summary)
+    print("\nobserved:\n", ct)
+    print("\nexpected:\n", expected)
+    plt.show(p)
+    print("\n_____________________\n")
+
+def explore_bivariate_quant(train, target, quant_var):
+    '''
+    descriptive stats by each target class. 
+    compare means across 2 target groups 
+    boxenplot of target x quant
+    swarmplot of target x quant
+    '''
+    print(quant_var, "\n____________________\n")
+    descriptive_stats = train.groupby(target)[quant_var].describe()
+    average = train[quant_var].mean()
+    mann_whitney = compare_means(train, target, quant_var)
+    plt.figure(figsize=(4,4))
+    boxen = plot_boxen(train, target, quant_var)
+    swarm = plot_swarm(train, target, quant_var)
+    plt.show()
+    print(descriptive_stats, "\n")
+    print("\nMann-Whitney Test:\n", mann_whitney)
+    print("\n____________________\n")
+
+## Bivariate Categorical
+
+def run_chi2(train, cat_var, target):
+    observed = pd.crosstab(train[cat_var], train[target])
+    chi2, p, degf, expected = stats.chi2_contingency(observed)
+    chi2_summary = pd.DataFrame({'chi2': [chi2], 'p-value': [p], 
+                                 'degrees of freedom': [degf]})
+    expected = pd.DataFrame(expected)
+    return chi2_summary, observed, expected
+
+def plot_cat_by_target(train, target, cat_var):
+    p = plt.figure(figsize=(2,2))
+    p = sns.barplot(cat_var, target, data=train, alpha=.8, color='lightseagreen')
+    overall_rate = train[target].mean()
+    p = plt.axhline(overall_rate, ls='--', color='gray')
+    return p
+
+
+## Bivariate Quant
+
+def plot_swarm(train, target, quant_var):
+    average = train[quant_var].mean()
+    p = sns.swarmplot(data=train, x=target, y=quant_var, color='lightgray')
+    p = plt.title(quant_var)
+    p = plt.axhline(average, ls='--', color='black')
+    return p
+
+def plot_boxen(train, target, quant_var):
+    average = train[quant_var].mean()
+    p = sns.boxenplot(data=train, x=target, y=quant_var, color='lightseagreen')
+    p = plt.title(quant_var)
+    p = plt.axhline(average, ls='--', color='black')
+    return p
+
+# alt_hyp = ‘two-sided’, ‘less’, ‘greater’
+
+def compare_means(train, target, quant_var, alt_hyp='two-sided'):
+    x = train[train[target]==0][quant_var]
+    y = train[train[target]==1][quant_var]
+    return stats.mannwhitneyu(x, y, use_continuity=True, alternative=alt_hyp)
+
+
+### Multivariate
+
+def plot_all_continuous_vars(train, target, quant_vars):
+    '''
+    Melt the dataset to "long-form" representation
+    boxenplot of measurement x value with color representing the target variable. 
+    '''
+    my_vars = [item for sublist in [quant_vars, [target]] for item in sublist]
+    sns.set(style="whitegrid", palette="muted")
+    melt = train[my_vars].melt(id_vars=target, var_name="measurement")
+    plt.figure(figsize=(8,6))
+    p = sns.boxenplot(x="measurement", y="value", hue=target, data=melt)
+    p.set(yscale="log", xlabel='')    
+    plt.show()
+
+def plot_violin_grid_with_color(train, target, cat_vars, quant_vars):
+    cols = len(cat_vars)
+    for quant in quant_vars:
+        _, ax = plt.subplots(nrows=1, ncols=cols, figsize=(16, 4), sharey=True)
+        for i, cat in enumerate(cat_vars):
+            sns.violinplot(x=cat, y=quant, data=train, split=True, 
+                           ax=ax[i], hue=target, palette="Set2")
+            ax[i].set_xlabel('')
+            ax[i].set_ylabel(quant)
+            ax[i].set_title(cat)
+        plt.show()
+
+def plot_swarm_grid_with_color(train, target, cat_vars, quant_vars):
+    cols = len(cat_vars)
+    for quant in quant_vars:
+        _, ax = plt.subplots(nrows=1, ncols=cols, figsize=(16, 4), sharey=True)
+        for i, cat in enumerate(cat_vars):
+            sns.swarmplot(x=cat, y=quant, data=train, ax=ax[i], hue=target, palette="Set2")
+            ax[i].set_xlabel('')
+            ax[i].set_ylabel(quant)
+            ax[i].set_title(cat)
+        plt.show()
+
+
+
+
+#XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+#XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+#XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
+# This function is specifically for the telco dataset
+def plot_categorical_and_continuous_vars(df, cont_vars, cat_vars):
+    
+    def plot_swarm(train, churn, cont_var):
+        average = train[cont_var].mean()
+        p = sns.swarmplot(data=train, x='churn', y=cont_var, color='lightgray')
+        p = plt.title(cont_var)
+        p = plt.axhline(average, ls='--', color='black')
+        return p
+    
+    def plot_cat_by_target(train, target, cat_var):
+        p = plt.figure(figsize=(2,2))
+        p = sns.barplot(cat_var, target, data=train, alpha=.8, color='lightseagreen')
+        #overall_rate = train['churn'].mean()
+        #p = plt.axhline(overall_rate, ls='--', color='gray')
+        return p
+    
+    def catplot(train):
+        sns.catplot(x="payment_type", y="tenure", hue="churn", aspect=2,
+            kind="swarm", data=train, palette = 'magma')
+        plt.show()
+        
+      
+    def barplot(train):
+        g = sns.catplot(x="payment_type", y="monthly_charges", hue="churn", kind="bar", data=train)
+        g.set_xticklabels(rotation=30)
+    
+    
+    def distplot(train):
+        sns.distplot(train.monthly_charges)
+        
+    plot_swarm(df, cont_vars, cat_vars)
+    
+    plot_cat_by_target(df, 'churn', cat_vars)
+    
+    catplot(train)
+    
+    barplot(train)
