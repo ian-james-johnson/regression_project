@@ -29,8 +29,7 @@ def prepare_zillow(df):
     '''
     
     # Get dataframe with only features needed for the MVP
-    zillow = df[['calculatedfinishedsquarefeet', 'bedroomcnt', 'bathroomcnt', 
-                 'taxvaluedollarcnt']]
+    zillow = df
 
     # Give column more meaningful names
     zillow = zillow.rename(columns={'calculatedfinishedsquarefeet':'area', 
@@ -61,7 +60,29 @@ def zillow_split(zillow):
 
 
 
-def zillow_scale(train, validate, test):
+def zillow_scale(x_train, x_validate, x_test):
+    '''
+    This function scales data after it has been split into train, validate, and test subsets.
+    '''
+   
+    # Create the scaler object
+    scaler = MinMaxScaler()
+
+    # Fit the scaler
+    scaler.fit(x_train)
+
+    # Use the scaler
+    x_train_scaled = scaler.transform(x_train)
+    x_validate_scaled = scaler.transform(x_validate)
+    x_test_scaled = scaler.transform(x_test)
+
+    return x_train_scaled, x_validate_scaled, x_test_scaled
+
+
+
+
+#XXXXXXXXXXXX older version
+def zillow_scaleXXX(train, validate, test):
     '''
     This function scales data after it has been split into train, validate, and test subsets.
     '''

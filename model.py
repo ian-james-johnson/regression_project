@@ -41,7 +41,7 @@ def zillow_scale(train, validate, test):
 
 
 
-def select_kbest(x_train_scaled, y_train, k):
+def select_kbest(x_train_scaled, y_train, x_train, k):
     '''
     This function takes predictive features (x_train), target features (y_train), 
     and the number of top features (k) that we want to select.
@@ -52,7 +52,7 @@ def select_kbest(x_train_scaled, y_train, k):
     kbest = SelectKBest(f_regression, k)
     
     # Fit the object
-    kbest = best.fit(x_train_scaled, y_train)
+    kbest = kbest.fit(x_train_scaled, y_train)
 
     # Convert back into a pd dataframe
     x_train_scaled = pd.DataFrame(x_train_scaled)
@@ -67,7 +67,7 @@ def select_kbest(x_train_scaled, y_train, k):
 
 
 
-def select_rfe(x_train_scaled, y_train, k):
+def select_rfe(x_train_scaled, y_train, x_train, k):
     '''
     This function uses RFE to find the best predictive features
     for the target.
